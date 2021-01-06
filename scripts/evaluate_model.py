@@ -71,6 +71,7 @@ def evaluate(args, loader, generator, num_samples):
             total_traj += pred_traj_gt.size(1)
 
             for _ in range(num_samples):
+                # modified by zyl 2020/12/14 pred_traj_fake_rel = generator(obs_traj, obs_traj_rel, seq_start_end, obs_traj_g)
                 pred_traj_fake_rel = generator(obs_traj, obs_traj_rel, seq_start_end, obs_traj_g)
                 pred_traj_fake = relative_to_abs(pred_traj_fake_rel, obs_traj[-1])
                 ade.append(displacement_error(pred_traj_fake, pred_traj_gt, mode='raw'))

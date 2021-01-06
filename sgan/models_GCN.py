@@ -215,6 +215,8 @@ class GCNPooling(nn.Module):
             hidden_dim=hidden_dim,
             out_dim=out_dim,
             gcn_layers=gcn_layers)
+        
+        # mlp: 
 
     def normalize(self, adj, dim):
         N = adj.size()
@@ -323,7 +325,7 @@ class GCNPooling(nn.Module):
                 # curr_gcn_pool_i: [N,16]
                 curr_gcn_pool_i = torch.cat([curr_gcn_pool_same, curr_gcn_pool_diff], dim=1)
 
-                
+
 
 
                 curr_gcn_pool.append(curr_gcn_pool_i)

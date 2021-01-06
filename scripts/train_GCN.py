@@ -72,7 +72,7 @@ parser.add_argument('--pool_every_timestep', default=0, type=bool_flag)
 
 # Pool Net Option
 # modified by zyl 2020/12/13 20:53  parser.add_argument('--bottleneck_dim', default=1024, type=int)
-parser.add_argument('--bottleneck_dim', default=8, type=int)
+parser.add_argument('--bottleneck_dim', default=16, type=int)
 
 # Social Pooling Options
 parser.add_argument('--neighborhood_size', default=2.0, type=float)

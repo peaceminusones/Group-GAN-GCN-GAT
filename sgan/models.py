@@ -299,9 +299,7 @@ class PoolHiddenNet(nn.Module):
 class GCN(nn.Module):
     """GCN module"""
 
-    def __init__(
-        self, input_dim=48, hidden_dim=72, out_dim=8, gcn_layers=2
-    ):
+    def __init__(self, input_dim=48, hidden_dim=72, out_dim=8, gcn_layers=2):
         super(GCN, self).__init__()
         self.X_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -333,7 +331,7 @@ class GCNPooling(nn.Module):
     """Pooling module with GCN layer"""
 
     def __init__(
-        self, embedding_dim=16, input_dim=48, hidden_dim=72, out_dim=8, gcn_layers=2, h_dim=32
+        self, embedding_dim=16, input_dim=48, hidden_dim=128, out_dim=8, gcn_layers=2, h_dim=32
     ):
         super(GCNPooling, self).__init__()
         self.h_dim = h_dim
@@ -352,6 +350,9 @@ class GCNPooling(nn.Module):
             hidden_dim=hidden_dim,
             out_dim=out_dim,
             gcn_layers=gcn_layers)
+
+        # mlp:16*8
+        self.out_embedding = nn.Linear(embedding_dim, 8)
 
     def normalize(self, adj, dim):
         N = adj.size()
@@ -447,6 +448,9 @@ class GCNPooling(nn.Module):
             # gcn_h_input_review: [N,N,48]
             gcn_h_input_review = gcn_h_input.view(num_ped, num_ped, -1)
 
+            """
+                method 1: GCN + MLP
+            """
             curr_gcn_pool = []
             for i in range(num_ped):
                 adj_same_i = adj_same[i]
@@ -461,12 +465,20 @@ class GCNPooling(nn.Module):
                 curr_gcn_pool_i = torch.cat([curr_gcn_pool_same, curr_gcn_pool_diff], dim=1)
                 curr_gcn_pool.append(curr_gcn_pool_i)
 
-            curr_gcn_pool = torch.cat(curr_gcn_pool, dim=0).reshape(num_ped, num_ped, -1)
-            # curr_gcn_pool: [N,N,16]
-            curr_gcn_pool = curr_gcn_pool.max(1)[0]  # [N,N,16] -->[N,16]
+            # curr_gcn_pool = torch.cat(curr_gcn_pool, dim=0).reshape(num_ped, num_ped, -1)
+            # # curr_gcn_pool: [N,N,16]
+            # curr_gcn_pool = curr_gcn_pool.max(1)[0]  # [N,N,16] -->[N,16]
+            # pool_h.append(curr_gcn_pool)
+
+            # curr_gcn_pool: [N*N,16]
+            curr_gcn_pool = torch.cat(curr_gcn_pool, dim=0)
+            # curr_gcn_pool: [N*N,8]
+            curr_gcn_pool = self.out_embedding(curr_gcn_pool)
+            # curr_gcn_pool: [N,8]
+            curr_gcn_pool = curr_gcn_pool.view(num_ped, num_ped, -1).max(1)[0]
             pool_h.append(curr_gcn_pool)
 
-        # pool_h: [batch,16]: a pooled tensor Pi for each person
+        # pool_h: [batch,8]: a pooled tensor Pi for each person
         pool_h = torch.cat(pool_h, dim=0)
         return pool_h
 
@@ -775,8 +787,8 @@ class TrajectoryGenerator(nn.Module):
         state_tuple = (decoder_h, decoder_c)
         last_pos = obs_traj[-1]
         last_pos_rel = obs_traj_rel[-1]
-        # Predict Trajectory
 
+        # Predict Trajectory
         decoder_out = self.decoder(
             last_pos,
             last_pos_rel,
