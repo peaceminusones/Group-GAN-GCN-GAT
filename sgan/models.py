@@ -461,8 +461,13 @@ class GCNPooling(nn.Module):
                 # print(gcn_h_input_review_i.shape)
                 curr_gcn_pool_same = self.gcn_pooling_net_intra(adj_same_i, gcn_h_input_review_i)  # [N,8]
                 curr_gcn_pool_diff = self.gcn_pooling_net_inter(adj_diff_i, gcn_h_input_review_i)  # [N,8]
-                # curr_gcn_pool_i: [N,16]
-                curr_gcn_pool_i = torch.cat([curr_gcn_pool_same, curr_gcn_pool_diff], dim=1)
+                # 取出行人i对应的特征
+                curr_gcn_pool_same_i = curr_gcn_pool_same[i]
+                curr_gcn_pool_diff_i = curr_gcn_pool_diff[i]
+                # curr_gcn_pool_i: [1,16] 一维tensor
+                curr_gcn_pool_i = torch.cat([curr_gcn_pool_same_i, curr_gcn_pool_diff_i])
+                # 一维tensor --> 二维tensor
+                curr_gcn_pool_i = torch.stack([curr_gcn_pool_i])
                 curr_gcn_pool.append(curr_gcn_pool_i)
 
             # curr_gcn_pool = torch.cat(curr_gcn_pool, dim=0).reshape(num_ped, num_ped, -1)
@@ -470,12 +475,12 @@ class GCNPooling(nn.Module):
             # curr_gcn_pool = curr_gcn_pool.max(1)[0]  # [N,N,16] -->[N,16]
             # pool_h.append(curr_gcn_pool)
 
-            # curr_gcn_pool: [N*N,16]
-            curr_gcn_pool = torch.cat(curr_gcn_pool, dim=0)
-            # curr_gcn_pool: [N*N,8]
+            # curr_gcn_pool: [N*1,16]
+            curr_gcn_pool = torch.cat(curr_gcn_pool)
+            # curr_gcn_pool: [N,8]
             curr_gcn_pool = self.out_embedding(curr_gcn_pool)
             # curr_gcn_pool: [N,8]
-            curr_gcn_pool = curr_gcn_pool.view(num_ped, num_ped, -1).max(1)[0]
+            # curr_gcn_pool = curr_gcn_pool.view(num_ped, num_ped, -1).max(1)[0]
             pool_h.append(curr_gcn_pool)
 
         # pool_h: [batch,8]: a pooled tensor Pi for each person
