@@ -331,7 +331,7 @@ class GCNPooling(nn.Module):
     """Pooling module with GCN layer"""
 
     def __init__(
-        self, embedding_dim=16, input_dim=48, hidden_dim=128, out_dim=8, gcn_layers=2, h_dim=32
+        self, embedding_dim=16, input_dim=48, hidden_dim=72, out_dim=8, gcn_layers=2, h_dim=32
     ):
         super(GCNPooling, self).__init__()
         self.h_dim = h_dim
