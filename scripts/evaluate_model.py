@@ -105,6 +105,7 @@ def main(args):
         print('Dataset: {}, Pred Len: {}, ADE: {:.2f}, FDE: {:.2f}'.format(
             _args.dataset_name, _args.pred_len, ade, fde))
         
+        # print parameters
         for k, v in checkpoint['args'].items():
             print(k, v)
 
@@ -113,7 +114,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     main(args)
 
-# Dataset: zara1, Pred Len: 12, ADE: 0.76, FDE: 1.39
+# Dataset: zara1, Pred Len: 12, ADE: 0.42, FDE: 0.84
 # dataset_name zara1
 # delim
 # loader_num_workers 4
@@ -138,7 +139,7 @@ if __name__ == '__main__':
 # g_steps 1
 # pooling_type gcn
 # pool_every_timestep 0
-# bottleneck_dim 16
+# bottleneck_dim 8
 # neighborhood_size 2.0
 # grid_size 8
 # d_type global

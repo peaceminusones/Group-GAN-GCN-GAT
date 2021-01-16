@@ -107,11 +107,6 @@ class Decoder(nn.Module):
         self.embedding_dim = embedding_dim
         self.pool_every_timestep = pool_every_timestep
 
-        """modified by zyl 2020/12/13 17:59"""
-        self.gcn_h = 72
-        self.gcn_o = 8
-        """end modified by zyl 2020/12/13 17:59"""
-
         # mlp [2,16]
         self.spatial_embedding = nn.Linear(2, embedding_dim)
         # lstm
@@ -133,21 +128,6 @@ class Decoder(nn.Module):
                     batch_norm=batch_norm,
                     dropout=dropout
                 )
-            elif pooling_type == 'spool':
-                self.pool_net = SocialPooling(
-                    h_dim=self.h_dim,
-                    activation=activation,
-                    batch_norm=batch_norm,
-                    dropout=dropout,
-                    neighborhood_size=neighborhood_size,
-                    grid_size=grid_size
-                )
-            else:
-                """modifed by zyl 2020/12/13================================================="""
-                self.pool_net = GCNPooling(
-                    embedding_dim=self.embedding_dim
-                )
-                """end modifed by zyl 2020/12/13============================================="""
 
             mlp_dims = [h_dim + bottleneck_dim, mlp_dim, h_dim]
             self.mlp = make_mlp(
@@ -180,8 +160,7 @@ class Decoder(nn.Module):
             if self.pool_every_timestep:
                 decoder_h = state_tuple[0]
                 pool_h = self.pool_net(decoder_h, seq_start_end, curr_pos)
-                decoder_h = torch.cat(
-                    [decoder_h.view(-1, self.h_dim), pool_h], dim=1)
+                decoder_h = torch.cat([decoder_h.view(-1, self.h_dim), pool_h], dim=1)
                 decoder_h = self.mlp(decoder_h)
                 decoder_h = torch.unsqueeze(decoder_h, 0)
                 state_tuple = (decoder_h, state_tuple[1])
@@ -291,11 +270,6 @@ class PoolHiddenNet(nn.Module):
         return pool_h
 
 
-"""
-  modified by zyl 2020/12/12=======================================================================================
-"""
-
-
 class GCN(nn.Module):
     """GCN module"""
 
@@ -327,39 +301,43 @@ class GCN(nn.Module):
         return feat
 
 
-class GCNPooling(nn.Module):
-    """Pooling module with GCN layer"""
+class GCNModule(nn.Module):
+    """group information aggregation with GCN layer"""
 
     def __init__(
-        self, embedding_dim=16, input_dim=48, hidden_dim=72, out_dim=8, gcn_layers=2, h_dim=32
+        self, input_dim=40, hidden_dim=72, out_dim=16, gcn_layers=2, final_dim=24
     ):
-        super(GCNPooling, self).__init__()
-        self.h_dim = h_dim
+        super(GCNModule, self).__init__()
 
-        # mlp: 2*16
-        self.spatial_embedding = nn.Linear(2, embedding_dim)
-        # GCN_intra: 48*72*8
-        self.gcn_pooling_net_intra = GCN(
+        # GCN_intra: 40*72*16
+        self.gcn_intra = GCN(
             input_dim=input_dim,
             hidden_dim=hidden_dim,
             out_dim=out_dim,
             gcn_layers=gcn_layers)
-        # GCN_inter: 48*72*8
-        self.gcn_pooling_net_inter = GCN(
-            input_dim=input_dim,
+        # GCN_inter: 16*72*16
+        self.gcn_inter = GCN(
+            input_dim=16,
             hidden_dim=hidden_dim,
             out_dim=out_dim,
             gcn_layers=gcn_layers)
 
         # mlp:16*8
-        self.out_embedding = nn.Linear(embedding_dim, 8)
+        self.out_embedding = nn.Linear(out_dim*2, final_dim)
 
+    # def normalize(self, adj, dim):
+    #     N = adj.size()
+    #     adj2 = torch.sum(adj, dim)       # 对每一行求和
+    #     norm = adj2.unsqueeze(1)         # 扩展张量维度
+    #     norm = norm.repeat(1, N[0],  1)  # 沿着指定维度重复张量
+    #     norm = norm.permute(2, 0, 1)     # 转置
+    #     norm = norm.pow(-1)              # 求倒数
+    #     norm_adj = adj.mul(norm)         # 点乘
+    #     return norm_adj
     def normalize(self, adj, dim):
         N = adj.size()
         adj2 = torch.sum(adj, dim)       # 对每一行求和
-        norm = adj2.unsqueeze(1)         # 扩展张量维度
-        norm = norm.repeat(1, N[0],  1)  # 沿着指定维度重复张量
-        norm = norm.permute(2, 0, 1)     # 转置
+        norm = adj2.unsqueeze(1).float()         # 扩展张量维度
         norm = norm.pow(-1)              # 求倒数
         norm_adj = adj.mul(norm)         # 点乘
         return norm_adj
@@ -380,229 +358,88 @@ class GCNPooling(nn.Module):
     def forward(self, h_states, seq_start_end, end_pos, end_group):
         """
         Inputs:
-        - h_states: Tensor of shape (num_layers, batch, h_dim) 即encoder的return：final_h
+        - h_states: Tensor of shape (batch, h_dim) 即encoder+pooling net的return
         - seq_start_end: A list of tuples which delimit sequences within batch
         - end_pos: Tensor of shape (batch, 2)
         - end_group: group labels at the last time step (t_obs); shape: (batch, 1)
         Output:
-        - pool_h: Tensor of shape (batch, bottleneck_dim)
+        - gcn_aggre: Tensor of shape (batch, bottleneck_dim)
         """
-        pool_h = []
+        gcn_aggre = []
         for _, (start, end) in enumerate(seq_start_end):
             start = start.item()
             end = end.item()
             num_ped = end - start  # num_ped: number of pedestrians in the scene
-            # print("num_ped:", num_ped)
-            # print("h_states:", h_states.shape)
+            # curr_state: [N,40]
+            curr_state = h_states[start:end]
 
             # get the modulated adjacency matrix arrays
             # Generate masks from the group labels
             # labels can only be used to distinguish groups at a timestep.
             # var: end_group; def: group labels at the last time step (t_obs); shape: (batch, 1)
-            curr_end_group = end_group[start:end]  # clip one onservation-prediction window out of multiple windows.
-            # curr_end_group = torch.randint(0, 3, (1, num_ped))
-            # curr_end_group = curr_end_group.t()
-            # N adjacency matrices for N pedestrians, each corresponds to a star topology graph
-            A = np.eye(num_ped)
-            B = np.zeros((num_ped, num_ped))
-            B[:, 0] = 1
-            C = B.T
-            adj_all = [np.logical_or(np.logical_or(A, np.roll(B, i, axis=1)), np.roll(C, i, axis=0)) for i in range(num_ped)]
-            adj_all = np.array(adj_all)
-            adj_all = torch.from_numpy(adj_all).float()
-            adj_all = adj_all.cuda()
-            # get the coherency mask, dimension: (N, N)
+            # clip one onservation-prediction window out of multiple windows.
+            curr_end_group = end_group[start:end]
+            # get the coherency adjacency, dimension: (N, N)
             # coherency mask is shared by all pedestrians in the scene
             eye_mtx = torch.eye(num_ped, device=end_group.device).bool()
             A_g = curr_end_group.repeat(1, num_ped)
             B_g = curr_end_group.transpose(1, 0).repeat(num_ped, 1)
-            mask_same = (A_g == B_g) & (A_g != 0) | eye_mtx
-            mask_diff = (mask_same == 0) | eye_mtx
-            # get the modulated adjacency matrix arrays, each has dimension: [N, N, N]
-            adj_same = adj_all*mask_same.float()  # intra group
-            adj_same = self.normalize(adj_same, dim=2).cuda()
-            adj_diff = adj_all * mask_diff.float()  # inter group
-            adj_diff = self.normalize(adj_diff, dim=2).cuda()
+            # M_intra: [N,N]
+            M_intra = (A_g == B_g) & (A_g != 0) | eye_mtx
+            # get the modulated normalized adjacency matrix arrays
+            # normalized M_intra: [N,N]
+            A_intra = self.normalize(M_intra, dim=1).cuda()
 
-            # h_states == final_h (即这里h_states就是LSTM的输出)
-            # h_states([1,batch,32])  ->  cur_hidden([N,32])
-            curr_hidden = h_states.view(-1, self.h_dim)[start:end]
-            # print("curr_hidden: ", curr_hidden.shape)
+            """gcn_intra"""
+            # curr_gcn_state_intra: [N,16] (GCN:[40,72,16])
+            curr_gcn_state_intra = self.gcn_intra(A_intra, curr_state)
 
-            # Repeat -> H1, H2, H1, H2
-            # curr_hidden([N,32])  ->  curr_hidden_1([N*N,32])
-            curr_hidden_1 = curr_hidden.repeat(num_ped, 1)
+            """GPool =================================================================="""
+            # M_intra: [N,N]
+            # R_intra_unique: [M,N]
+            R_intra_unique = torch.unique(M_intra, sorted=False, dim=0)
+            # group 的数量
+            n_group = R_intra_unique.size()[0]
+            R_intra_unique.unsqueeze_(1)  # 增加一维
+            # 从下到上翻转R_intra_unique
+            R_intra = []
+            for i in range(n_group-1, -1, -1):
+                R_intra.append(R_intra_unique[i])
+            R_intra = torch.cat(R_intra, dim=0)
+            # 归一化
+            R_intra = self.normalize(R_intra, dim=1).cuda()
+            # 提取群组部分 [M,N]*[N,16]
+            # curr_gcn_group_state: [M,16]
+            curr_gcn_group_state_in = torch.matmul(R_intra, curr_gcn_state_intra)
+            """=========================================================================="""
 
-            # Repeat position -> P1, P2, P1, P2
-            curr_end_pos = end_pos[start:end]
-            curr_end_pos_1 = curr_end_pos.repeat(num_ped, 1)
-            # Repeat position -> P1, P1, P2, P2
-            curr_end_pos_2 = self.repeat(curr_end_pos, num_ped)
-            # curr_rel_pos: [N*N,2]
-            curr_rel_pos = curr_end_pos_1 - curr_end_pos_2
-            # self.spatial_embedding(mlp): 2*16
-            # curr_rel_embedding: [N*N,16]
-            curr_rel_embedding = self.spatial_embedding(curr_rel_pos)
-            # mlp_h_inpur: [N*N,48]
-            gcn_h_input = torch.cat([curr_rel_embedding, curr_hidden_1], dim=1)
-            # gcn_h_input_review: [N,N,48]
-            gcn_h_input_review = gcn_h_input.view(num_ped, num_ped, -1)
+            """gcn_inter"""
+            # M_inter: [M,M]
+            M_inter = torch.ones((n_group, n_group), device=end_group.device).bool()
+            # normalize
+            A_inter = self.normalize(M_inter, dim=1).cuda()
+            # M_inter_norm: [M,M]
+            # curr_gcn_group_state_in: [M,16]  (GCN:[16,72,16])
+            # curr_gcn_group_state_out: [M,16]
+            curr_gcn_group_state_out = self.gcn_inter(A_inter, curr_gcn_group_state_in)
 
-            """
-                method 1: GCN + MLP
-            """
-            curr_gcn_pool = []
-            for i in range(num_ped):
-                adj_same_i = adj_same[i]
-                adj_diff_i = adj_diff[i]
+            """GUnpool================================================================="""
+            # [N,M]*[M,16]
+            # curr_gcn_state_inter: [N,16]
+            curr_gcn_state_inter = torch.matmul(R_intra.T, curr_gcn_group_state_out)
+            """========================================================================="""
 
-                gcn_h_input_review_i = gcn_h_input_review[i]
-                # print(adj_same_i.shape)
-                # print(gcn_h_input_review_i.shape)
-                curr_gcn_pool_same = self.gcn_pooling_net_intra(adj_same_i, gcn_h_input_review_i)  # [N,8]
-                curr_gcn_pool_diff = self.gcn_pooling_net_inter(adj_diff_i, gcn_h_input_review_i)  # [N,8]
-                # 取出行人i对应的特征
-                curr_gcn_pool_same_i = curr_gcn_pool_same[i]
-                curr_gcn_pool_diff_i = curr_gcn_pool_diff[i]
-                # curr_gcn_pool_i: [1,16] 一维tensor
-                curr_gcn_pool_i = torch.cat([curr_gcn_pool_same_i, curr_gcn_pool_diff_i])
-                # 一维tensor --> 二维tensor
-                curr_gcn_pool_i = torch.stack([curr_gcn_pool_i])
-                curr_gcn_pool.append(curr_gcn_pool_i)
+            # curr_gcn_state: [N,32]
+            curr_gcn_state = torch.cat([curr_gcn_state_intra, curr_gcn_state_inter], dim=1)
 
-            # curr_gcn_pool = torch.cat(curr_gcn_pool, dim=0).reshape(num_ped, num_ped, -1)
-            # # curr_gcn_pool: [N,N,16]
-            # curr_gcn_pool = curr_gcn_pool.max(1)[0]  # [N,N,16] -->[N,16]
-            # pool_h.append(curr_gcn_pool)
+            # curr_gcn_state: [N,24]
+            curr_gcn_state = self.out_embedding(curr_gcn_state)
 
-            # curr_gcn_pool: [N*1,16]
-            curr_gcn_pool = torch.cat(curr_gcn_pool)
-            # curr_gcn_pool: [N,8]
-            curr_gcn_pool = self.out_embedding(curr_gcn_pool)
-            # curr_gcn_pool: [N,8]
-            # curr_gcn_pool = curr_gcn_pool.view(num_ped, num_ped, -1).max(1)[0]
-            pool_h.append(curr_gcn_pool)
+            gcn_aggre.append(curr_gcn_state)
 
-        # pool_h: [batch,8]: a pooled tensor Pi for each person
-        pool_h = torch.cat(pool_h, dim=0)
-        return pool_h
-
-
-"""
-  end modified by zyl 2020/12/12======================================================================================
-"""
-
-
-class SocialPooling(nn.Module):
-    """Current state of the art pooling mechanism:
-    http://cvgl.stanford.edu/papers/CVPR16_Social_LSTM.pdf"""
-
-    def __init__(
-        self, h_dim=64, activation='relu', batch_norm=True, dropout=0.0,
-        neighborhood_size=2.0, grid_size=8, pool_dim=None
-    ):
-        super(SocialPooling, self).__init__()
-        self.h_dim = h_dim
-        self.grid_size = grid_size
-        self.neighborhood_size = neighborhood_size
-        if pool_dim:
-            mlp_pool_dims = [grid_size * grid_size * h_dim, pool_dim]
-        else:
-            mlp_pool_dims = [grid_size * grid_size * h_dim, h_dim]
-
-        self.mlp_pool = make_mlp(
-            mlp_pool_dims,
-            activation=activation,
-            batch_norm=batch_norm,
-            dropout=dropout
-        )
-
-    def get_bounds(self, ped_pos):
-        top_left_x = ped_pos[:, 0] - self.neighborhood_size / 2
-        top_left_y = ped_pos[:, 1] + self.neighborhood_size / 2
-        bottom_right_x = ped_pos[:, 0] + self.neighborhood_size / 2
-        bottom_right_y = ped_pos[:, 1] - self.neighborhood_size / 2
-        top_left = torch.stack([top_left_x, top_left_y], dim=1)
-        bottom_right = torch.stack([bottom_right_x, bottom_right_y], dim=1)
-        return top_left, bottom_right
-
-    def get_grid_locations(self, top_left, other_pos):
-        cell_x = torch.floor(((other_pos[:, 0] - top_left[:, 0]) / self.neighborhood_size) * self.grid_size)
-        cell_y = torch.floor(((top_left[:, 1] - other_pos[:, 1]) / self.neighborhood_size) * self.grid_size)
-        grid_pos = cell_x + cell_y * self.grid_size
-        return grid_pos
-
-    def repeat(self, tensor, num_reps):
-        """
-        Inputs:
-        -tensor: 2D tensor of any shape
-        -num_reps: Number of times to repeat each row
-        Outpus:
-        -repeat_tensor: Repeat each row such that: R1, R1, R2, R2
-        """
-        col_len = tensor.size(1)
-        tensor = tensor.unsqueeze(dim=1).repeat(1, num_reps, 1)
-        tensor = tensor.view(-1, col_len)
-        return tensor
-
-    def forward(self, h_states, seq_start_end, end_pos):
-        """
-        Inputs:
-        - h_states: Tesnsor of shape (num_layers, batch, h_dim)
-        - seq_start_end: A list of tuples which delimit sequences within batch.
-        - end_pos: Absolute end position of obs_traj (batch, 2)
-        Output:
-        - pool_h: Tensor of shape (batch, h_dim)
-        """
-        pool_h = []
-        for _, (start, end) in enumerate(seq_start_end):
-            start = start.item()
-            end = end.item()
-            num_ped = end - start
-            grid_size = self.grid_size * self.grid_size
-            curr_hidden = h_states.view(-1, self.h_dim)[start:end]
-            curr_hidden_repeat = curr_hidden.repeat(num_ped, 1)
-            curr_end_pos = end_pos[start:end]
-            curr_pool_h_size = (num_ped * grid_size) + 1
-            curr_pool_h = curr_hidden.new_zeros((curr_pool_h_size, self.h_dim))
-            # curr_end_pos = curr_end_pos.data
-            top_left, bottom_right = self.get_bounds(curr_end_pos)
-
-            # Repeat position -> P1, P2, P1, P2
-            curr_end_pos = curr_end_pos.repeat(num_ped, 1)
-            # Repeat bounds -> B1, B1, B2, B2
-            top_left = self.repeat(top_left, num_ped)
-            bottom_right = self.repeat(bottom_right, num_ped)
-
-            grid_pos = self.get_grid_locations(top_left, curr_end_pos).type_as(seq_start_end)
-            # Make all positions to exclude as non-zero
-            # Find which peds to exclude
-            x_bound = ((curr_end_pos[:, 0] >= bottom_right[:, 0]) + (curr_end_pos[:, 0] <= top_left[:, 0]))
-            y_bound = ((curr_end_pos[:, 1] >= top_left[:, 1]) + (curr_end_pos[:, 1] <= bottom_right[:, 1]))
-
-            within_bound = x_bound + y_bound
-            within_bound[0::num_ped + 1] = 1  # Don't include the ped itself
-            within_bound = within_bound.view(-1)
-
-            # This is a tricky way to get scatter add to work. Helps me avoid a
-            # for loop. Offset everything by 1. Use the initial 0 position to
-            # dump all uncessary adds.
-            grid_pos += 1
-            total_grid_size = self.grid_size * self.grid_size
-            offset = torch.arange(0, total_grid_size * num_ped, total_grid_size).type_as(seq_start_end)
-
-            offset = self.repeat(offset.view(-1, 1), num_ped).view(-1)
-            grid_pos += offset
-            grid_pos[within_bound != 0] = 0
-            grid_pos = grid_pos.view(-1, 1).expand_as(curr_hidden_repeat)
-
-            curr_pool_h = curr_pool_h.scatter_add(0, grid_pos, curr_hidden_repeat)
-            curr_pool_h = curr_pool_h[1:]
-            pool_h.append(curr_pool_h.view(num_ped, -1))
-
-        pool_h = torch.cat(pool_h, dim=0)
-        pool_h = self.mlp_pool(pool_h)
-        return pool_h
+        # gcn_aggre: [batch,24]:
+        gcn_aggre = torch.cat(gcn_aggre, dim=0)
+        return gcn_aggre
 
 
 class TrajectoryGenerator(nn.Module):
@@ -666,21 +503,6 @@ class TrajectoryGenerator(nn.Module):
                 activation=activation,
                 batch_norm=batch_norm
             )
-        elif pooling_type == 'spool':
-            self.pool_net = SocialPooling(
-                h_dim=encoder_h_dim,
-                activation=activation,
-                batch_norm=batch_norm,
-                dropout=dropout,
-                neighborhood_size=neighborhood_size,
-                grid_size=grid_size
-            )
-        else:
-            """modifed by zyl 2020/12/13 18:07================================================="""
-            self.pool_net = GCNPooling(
-                embedding_dim=self.embedding_dim
-            )
-            """end modifed by zyl 2020/12/13============================================="""
 
         if self.noise_dim is None:
             self.noise_dim = None
@@ -704,6 +526,14 @@ class TrajectoryGenerator(nn.Module):
                 batch_norm=batch_norm,
                 dropout=dropout
             )
+
+        self.gcn_module = GCNModule(
+            input_dim=input_dim,
+            hidden_dim=72,
+            out_dim=16,
+            gcn_layers=2,
+            final_dim=decoder_h_dim - self.noise_first_dim
+        )
 
     def add_noise(self, _input, seq_start_end, user_noise=None):
         """
@@ -752,7 +582,7 @@ class TrajectoryGenerator(nn.Module):
         else:
             return False
 
-    # modified by zyl 2020/12/14 9:56
+    # modified by zyl 2021/1/12
     def forward(self, obs_traj, obs_traj_rel, seq_start_end, obs_traj_g, user_noise=None):
         """
         Inputs:
@@ -767,20 +597,27 @@ class TrajectoryGenerator(nn.Module):
         batch = obs_traj_rel.size(1)
         # Encode seq
         final_encoder_h = self.encoder(obs_traj_rel)
+
         # Pool States
         if self.pooling_type:
             end_pos = obs_traj[-1, :, :]
-            # modified by zyl 2020/12/14 9:56
-            end_group = obs_traj_g[-1, :, :]
-            pool_h = self.pool_net(final_encoder_h, seq_start_end, end_pos, end_group)
+            pool_h = self.pool_net(final_encoder_h, seq_start_end, end_pos)
+
             # Construct input hidden states for decoder
+            # final_encoder_h: [batch, 32]
+            # pool_h: [batch, 8]
+            # mlp_decoder_context_input: [batch, 40]
             mlp_decoder_context_input = torch.cat([final_encoder_h.view(-1, self.encoder_h_dim), pool_h], dim=1)
         else:
             mlp_decoder_context_input = final_encoder_h.view(-1, self.encoder_h_dim)
 
         # Add Noise
         if self.mlp_decoder_needed():
-            noise_input = self.mlp_decoder_context(mlp_decoder_context_input)
+            # noise_input = self.mlp_decoder_context(mlp_decoder_context_input)
+            end_pos = obs_traj[-1, :, :]
+            # modified by zyl 2021/1/12 9:56
+            end_group = obs_traj_g[-1, :, :]
+            noise_input = self.gcn_module(mlp_decoder_context_input, seq_start_end, end_pos, end_group)
         else:
             noise_input = mlp_decoder_context_input
 
@@ -864,8 +701,6 @@ class TrajectoryDiscriminator(nn.Module):
         if self.d_type == 'local':
             classifier_input = final_h.squeeze()
         else:
-            classifier_input = self.pool_net(
-                final_h.squeeze(), seq_start_end, traj[0]
-            )
+            classifier_input = self.pool_net(final_h.squeeze(), seq_start_end, traj[0])
         scores = self.real_classifier(classifier_input)
         return scores

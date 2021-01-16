@@ -27,8 +27,9 @@ logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 # Dataset options
-parser.add_argument('--dataset_name', default='zara1', type=str)
-parser.add_argument('--delim', default='\t')
+parser.add_argument('--dataset_name', default='eth', type=str)
+# modified by zyl 2021/1/8  parser.add_argument('--delim', default=' ')
+parser.add_argument('--delim', default='tab')
 parser.add_argument('--loader_num_workers', default=4, type=int)
 parser.add_argument('--obs_len', default=8, type=int)
 # modified by zyl 2020/12/13 20:19  parser.add_argument('--pred_len', default=8, type=int)
@@ -66,7 +67,8 @@ parser.add_argument('--g_learning_rate', default=1e-4, type=float)
 parser.add_argument('--g_steps', default=1, type=int)
 
 # Pooling Options
-parser.add_argument('--pooling_type', default='gcn')
+# parser.add_argument('--pooling_type', default='pool_net')
+parser.add_argument('--pooling_type', default='pool_net')
 # modified by zyl 2020/12/14 10:00  parser.add_argument('--pool_every_timestep', default=1, type=bool_flag)
 parser.add_argument('--pool_every_timestep', default=0, type=bool_flag)
 
@@ -85,13 +87,13 @@ parser.add_argument('--d_type', default='global', type=str)
 parser.add_argument('--encoder_h_dim_d', default=48, type=int)
 # modified by zyl 2020/12/14  parser.add_argument('--d_learning_rate', default=5e-4, type=float)
 parser.add_argument('--d_learning_rate', default=1e-3, type=float)
-parser.add_argument('--d_steps', default=2, type=int)
+parser.add_argument('--d_steps', default=1, type=int)
 parser.add_argument('--clipping_threshold_d', default=0, type=float)
 
 # Loss Options
 # modified by zyl 2020/12/14  parser.add_argument('--l2_loss_weight', default=0, type=float)
 parser.add_argument('--l2_loss_weight', default=1, type=float)
-parser.add_argument('--best_k', default=1, type=int)
+parser.add_argument('--best_k', default=20, type=int)
 
 # Output
 parser.add_argument('--output_dir', default=os.getcwd())
@@ -141,7 +143,7 @@ def main(args):
     _, val_loader = data_loader(args, val_path)
 
     # args.batch_size = 64
-    # args.d_steps = 2
+    # args.d_steps = 1
     iterations_per_epoch = len(train_dset) / args.batch_size / args.d_steps
     # args.num_epochs = 200
     if args.num_epochs:
@@ -167,7 +169,7 @@ def main(args):
         bottleneck_dim=args.bottleneck_dim,
         neighborhood_size=args.neighborhood_size,
         grid_size=args.grid_size,
-        batch_norm=args.batch_norm)
+        batch_norm=args.batch_norm).cuda()
 
     generator.apply(init_weights)
     generator.type(float_dtype).train()
@@ -184,8 +186,8 @@ def main(args):
         num_layers=args.num_layers,
         dropout=args.dropout,
         batch_norm=args.batch_norm,
-        d_type=args.d_type)
-
+        d_type=args.d_type).cuda()
+    
     discriminator.apply(init_weights)
     discriminator.type(float_dtype).train()
     logger.info('Here is the discriminator:')
