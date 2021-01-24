@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 # Dataset options
-parser.add_argument('--dataset_name', default='zara2', type=str)
+parser.add_argument('--dataset_name', default='zara1', type=str)
 # modified by zyl 2021/1/8  parser.add_argument('--delim', default=' ')
 parser.add_argument('--delim', default='tab')
 parser.add_argument('--loader_num_workers', default=4, type=int)
