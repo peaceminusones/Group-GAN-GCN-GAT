@@ -1,7 +1,16 @@
+<<<<<<< HEAD
 {
     "python.pythonPath": "E:\\Anaconda3\\envs\\pytorch\\python.exe",
     "python.formatting.provider": "autopep8",
     "python.formatting.autopep8Args": [
         "--max-line-length=200"
     ]
+=======
+{
+    "python.pythonPath": "E:\\Python\\Python37\\python.exe",
+    "python.formatting.provider": "autopep8",
+    "python.formatting.autopep8Args": [
+        "--max-line-length=200"
+    ]
+>>>>>>> 2918a46a83ba3e4c9618452964816778818d9fd9
 }
