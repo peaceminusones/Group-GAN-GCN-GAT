@@ -1,4 +1,5 @@
 
+<<<<<<< HEAD
 import argparse
 import gc
 import logging
@@ -8,6 +9,17 @@ from collections import defaultdict
 import torch
 import torch.nn as nn
 import torch.optim as optim
+=======
+import torch.optim as optim
+import torch.nn as nn
+import torch
+from collections import defaultdict
+import time
+import os
+import logging
+import gc
+import argparse
+>>>>>>> 2918a46a83ba3e4c9618452964816778818d9fd9
 import sys
 sys.path.append(".")
 from sgan.data.loader import data_loader
@@ -27,7 +39,15 @@ logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 # Dataset options
+<<<<<<< HEAD
 parser.add_argument('--dataset_name', default='univ', type=str)
+=======
+<<<<<<< HEAD
+parser.add_argument('--dataset_name', default='zara2', type=str)
+=======
+parser.add_argument('--dataset_name', default='univ', type=str)
+>>>>>>> 2918a46a83ba3e4c9618452964816778818d9fd9
+>>>>>>> origin/master
 # modified by zyl 2021/1/8  parser.add_argument('--delim', default=' ')
 parser.add_argument('--delim', default='tab')
 parser.add_argument('--loader_num_workers', default=4, type=int)
@@ -187,7 +207,11 @@ def main(args):
         dropout=args.dropout,
         batch_norm=args.batch_norm,
         d_type=args.d_type).cuda()
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> 2918a46a83ba3e4c9618452964816778818d9fd9
     discriminator.apply(init_weights)
     discriminator.type(float_dtype).train()
     logger.info('Here is the discriminator:')
@@ -395,8 +419,13 @@ def discriminator_step(args, batch, generator, discriminator, d_loss_fn, optimiz
     batch = [tensor.cuda() for tensor in batch]
     # modified by zyl 2020/12/14 (obs_traj, pred_traj_gt, obs_traj_rel, pred_traj_gt_rel, non_linear_ped, loss_mask, seq_start_end) = batch
     (obs_traj, pred_traj_gt, obs_traj_rel, pred_traj_gt_rel, obs_traj_rel_v, pred_traj_rel_v, obs_traj_g, pred_traj_g,
+<<<<<<< HEAD
              non_linear_ped, loss_mask, seq_start_end) = batch
     
+=======
+     non_linear_ped, loss_mask, seq_start_end) = batch
+
+>>>>>>> 2918a46a83ba3e4c9618452964816778818d9fd9
     losses = {}
     loss = torch.zeros(1).to(pred_traj_gt)
 
@@ -432,7 +461,11 @@ def generator_step(args, batch, generator, discriminator, g_loss_fn, optimizer_g
     batch = [tensor.cuda() for tensor in batch]
     # modified by zyl 2020/12/14 (obs_traj, pred_traj_gt, obs_traj_rel, pred_traj_gt_rel, non_linear_ped, loss_mask, seq_start_end) = batch
     (obs_traj, pred_traj_gt, obs_traj_rel, pred_traj_gt_rel, obs_traj_rel_v, pred_traj_rel_v, obs_traj_g, pred_traj_g,
+<<<<<<< HEAD
              non_linear_ped, loss_mask, seq_start_end) = batch
+=======
+     non_linear_ped, loss_mask, seq_start_end) = batch
+>>>>>>> 2918a46a83ba3e4c9618452964816778818d9fd9
     losses = {}
     loss = torch.zeros(1).to(pred_traj_gt)
     g_l2_loss_rel = []
@@ -652,4 +685,8 @@ TrajectoryGenerator(
   )
 )
 
+<<<<<<< HEAD
 """
+=======
+"""
+>>>>>>> 2918a46a83ba3e4c9618452964816778818d9fd9
