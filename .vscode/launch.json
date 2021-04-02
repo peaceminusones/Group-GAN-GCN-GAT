@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 {
     // Use IntelliSense to learn about possible attributes.
     // Hover to view descriptions of existing attributes.
@@ -14,21 +13,4 @@
             "console": "integratedTerminal"
         }
     ]
-=======
-{
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "PythonPytorch",
-            "type": "python",
-            "request": "launch",
-            "program": "${file}",
-            "python": "E:\\Anaconda3\\envs\\pytorch\\python.exe",
-            "console": "integratedTerminal"
-        }
-    ]
->>>>>>> 2918a46a83ba3e4c9618452964816778818d9fd9
 }

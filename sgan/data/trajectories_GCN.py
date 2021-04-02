@@ -133,10 +133,14 @@ class TrajectoryDataset(Dataset):
                     curr_ped_seq = np.around(curr_ped_seq, decimals=4)
                     pad_front = frames.index(curr_ped_seq[0, 0]) - idx
                     pad_end = frames.index(curr_ped_seq[-1, 0]) - idx + 1
-
+                    # print(frames.index(curr_ped_seq[0, 0]), frames.index(curr_ped_seq[-1, 0]), idx)
                     if pad_end - pad_front != self.seq_len:
                         continue
 
+                    if(curr_ped_seq.shape[0] != self.seq_len):
+                        continue
+                    # print(pad_end, pad_front)
+                    # print(curr_ped_seq)
                     curr_ped_seq = np.transpose(curr_ped_seq[:, 2:])
                     curr_ped_seq = curr_ped_seq
 

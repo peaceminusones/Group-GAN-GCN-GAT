@@ -17,7 +17,8 @@ from sgan.models import TrajectoryGenerator, TrajectoryDiscriminator
 from sgan.utils import int_tuple, bool_flag, get_total_norm
 from sgan.utils import relative_to_abs, get_dset_path
 
-
+# watch -n 1 nvidia-smi
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 torch.backends.cudnn.benchmark = True
 
@@ -111,6 +112,17 @@ parser.add_argument('--use_gpu', default=1, type=int)
 parser.add_argument('--timing', default=0, type=int)
 parser.add_argument('--gpu_num', default="0", type=str)
 
+# GAT
+parser.add_argument("--n_heads", type=int, default=1, help="Heads in each layer, splitted with comma")
+parser.add_argument(
+    "--hidden_units",
+    type=str,
+    default="16",
+    help="Hidden units in each hidden layer, splitted with comma",
+)
+parser.add_argument("--dropout1", type=float, default=0, help="Dropout rate (1 - keep probability).")
+parser.add_argument("--alpha", type=float, default=0.2, help="Alpha for the leaky_relu.")
+
 
 def init_weights(m):
     classname = m.__class__.__name__
@@ -151,6 +163,12 @@ def main(args):
 
     logger.info('There are {} iterations per epoch'.format(iterations_per_epoch))
 
+    n_units = (
+        [40]
+        + [int(x) for x in args.hidden_units.strip().split(",")]
+        + [40]
+    )
+
     # generator network
     generator = TrajectoryGenerator(
         obs_len=args.obs_len,
@@ -169,7 +187,11 @@ def main(args):
         bottleneck_dim=args.bottleneck_dim,
         neighborhood_size=args.neighborhood_size,
         grid_size=args.grid_size,
-        batch_norm=args.batch_norm).cuda()
+        batch_norm=args.batch_norm,
+        n_units=n_units,
+        n_heads=args.n_heads,
+        dropout1=args.dropout1,
+        alpha=args.alpha).cuda()
 
     generator.apply(init_weights)
     generator.type(float_dtype).train()
@@ -180,9 +202,9 @@ def main(args):
     discriminator = TrajectoryDiscriminator(
         obs_len=args.obs_len,
         pred_len=args.pred_len,
-        embedding_dim=args.embedding_dim,
-        h_dim=args.encoder_h_dim_d,
-        mlp_dim=args.mlp_dim,
+        embedding_dim=args.embedding_dim,  # 16
+        h_dim=args.encoder_h_dim_d,        # 48
+        mlp_dim=args.mlp_dim,              # 64
         num_layers=args.num_layers,
         dropout=args.dropout,
         batch_norm=args.batch_norm,
@@ -255,27 +277,6 @@ def main(args):
         epoch += 1
         logger.info('Starting epoch {}'.format(epoch))
         for batch in train_loader:  # 循环调用DataLoader对象，将数据一批一批的加载到模型进行训练
-            # print("batch:", batch)
-            # (obs_traj, pred_traj_gt, obs_traj_rel, pred_traj_gt_rel, obs_traj_rel_v, pred_traj_rel_v, obs_traj_g, pred_traj_g,
-            #  non_linear_ped, loss_mask, seq_start_end) = batch
-            # print("obs_traj:", obs_traj.shape)
-            # print("pred_traj_gt:", pred_traj_gt.shape)
-            # print("obs_traj_rel:", obs_traj_rel.shape)
-            # print("pred_traj_gt_rel:", pred_traj_gt_rel.shape)
-            # print("obs_traj_rel_v:", obs_traj_rel_v.shape)
-            # print("pred_traj_rel_v:", pred_traj_rel_v.shape)
-            # print("obs_traj_g:", obs_traj_g.shape)
-            # print("pred_traj_g:", pred_traj_g.shape)
-            # print("non_linear_ped:", non_linear_ped.shape)
-            # print("loss_mask:", loss_mask.shape)
-
-            # (obs_traj, pred_traj_gt, obs_traj_rel, pred_traj_gt_rel, non_linear_ped, loss_mask, seq_start_end) = batch
-            # print("obs_traj:", obs_traj.shape)
-            # print("pred_traj_gt:", pred_traj_gt.shape)
-            # print("obs_traj_rel:", obs_traj_rel.shape)
-            # print("pred_traj_gt_rel:", pred_traj_gt_rel.shape)
-            # print("non_linear_ped:", non_linear_ped.shape)
-            # print("loss_mask:", loss_mask.shape)
 
             if args.timing == 1:
                 torch.cuda.synchronize()
@@ -439,7 +440,8 @@ def generator_step(args, batch, generator, discriminator, g_loss_fn, optimizer_g
 
     loss_mask = loss_mask[:, args.obs_len:]
 
-    for _ in range(args.best_k):
+    for i in range(args.best_k):
+        # print(i)
         generator_out = generator(obs_traj, obs_traj_rel, seq_start_end, obs_traj_g)
 
         pred_traj_fake_rel = generator_out

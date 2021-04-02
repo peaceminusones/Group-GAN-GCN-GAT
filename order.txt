@@ -1,0 +1,10 @@
+d:
+cd D:\pedestrian analysis\group detection and prediction\GCN\VNC\sgan-master
+
+activate pytorch
+
+python scripts/train.py
+
+python scripts/evaluate_model.py --model_path models/sgan-gat-models
+
+python scripts/visualization.py --model_path models/sgan-gat-models/01

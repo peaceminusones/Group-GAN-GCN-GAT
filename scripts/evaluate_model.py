@@ -19,6 +19,14 @@ parser.add_argument('--dset_type', default='test', type=str)
 
 def get_generator(checkpoint):
     args = AttrDict(checkpoint['args'])
+
+    n_units = (
+        [40]
+        + [int(x) for x in args.hidden_units.strip().split(",")]
+        + [40]
+    )
+    # n_heads = [int(x) for x in args.heads.strip().split(",")]
+
     generator = TrajectoryGenerator(
         obs_len=args.obs_len,
         pred_len=args.pred_len,
@@ -36,7 +44,11 @@ def get_generator(checkpoint):
         bottleneck_dim=args.bottleneck_dim,
         neighborhood_size=args.neighborhood_size,
         grid_size=args.grid_size,
-        batch_norm=args.batch_norm)
+        batch_norm=args.batch_norm,
+        n_units=n_units,
+        n_heads=args.n_heads,
+        dropout1=args.dropout1,
+        alpha=args.alpha).cuda()
     generator.load_state_dict(checkpoint['g_state'])
     generator.cuda()
     generator.train()
